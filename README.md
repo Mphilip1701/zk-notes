@@ -34,7 +34,7 @@ apps/web          React client
 
 ## Getting started
 
-Requires Node ≥ 20 and PostgreSQL 16 (or Docker).
+Requires Node ≥ 22.9 (the scripts use `--env-file-if-exists`) and PostgreSQL 16 (or Docker).
 
 ```bash
 npm install

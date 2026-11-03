@@ -12,5 +12,5 @@
     "dev:web": "npm run dev -w @zk-notes/web",
     "migrate": "npm run migrate -w @zk-notes/server"
   },
-  "engines": { "node": ">=20" }
+  "engines": { "node": ">=22.9" }
 }
