@@ -1,0 +1,16 @@
+{
+  "name": "zk-notes",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "build": "npm run build -w @zk-notes/crypto && npm run build -w @zk-notes/server && npm run build -w @zk-notes/web",
+    "test": "npm run build -w @zk-notes/crypto && npm test -w @zk-notes/crypto && npm test -w @zk-notes/server",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev:server": "npm run dev -w @zk-notes/server",
+    "dev:web": "npm run dev -w @zk-notes/web",
+    "migrate": "npm run migrate -w @zk-notes/server"
+  },
+  "engines": { "node": ">=20" }
+}
