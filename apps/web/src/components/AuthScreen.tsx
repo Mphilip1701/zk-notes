@@ -3,11 +3,11 @@ import { useState, type FormEvent } from 'react';
 import { api, type VaultBundle } from '../lib/api';
 import { describeError } from '../lib/errors';
 import { kdf } from '../lib/kdfClient';
-
-export const MIN_PASSWORD_LENGTH = 12;
+import { MIN_PASSWORD_LENGTH } from '../lib/policy';
+import { RecoverForm } from './RecoverForm';
 
 export function AuthScreen({ onAuthenticated }: { onAuthenticated: (b: VaultBundle, vk: CryptoKey) => void }) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'recover'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -40,6 +40,7 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (b: VaultBund
             kdfParams: request.kdfParams,
             wrappedVaultKey: request.wrappedVaultKey,
             vaultKeyIv: request.vaultKeyIv,
+            hasRecoveryKey: false,
           },
           vaultKey,
         );
@@ -60,6 +61,14 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (b: VaultBund
       setPassword('');
       setConfirm('');
     }
+  }
+
+  if (mode === 'recover') {
+    return (
+      <div className="center">
+        <RecoverForm onAuthenticated={onAuthenticated} onCancel={() => setMode('login')} />
+      </div>
+    );
   }
 
   return (
@@ -105,8 +114,8 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (b: VaultBund
               />
             </label>
             <p className="warning small">
-              There is no password reset. If you forget your master password, your notes cannot be recovered by
-              anyone.
+              There is no password reset. After signing up, create a <strong>recovery key</strong>: without one, a
+              forgotten master password means your notes cannot be recovered by anyone.
             </p>
           </>
         )}
@@ -118,6 +127,11 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (b: VaultBund
         <button className="primary" type="submit" disabled={busy !== null}>
           {busy ?? (mode === 'login' ? 'Sign in' : 'Create account')}
         </button>
+        {mode === 'login' && (
+          <button type="button" className="link" onClick={() => setMode('recover')}>
+            Forgot password? Use your recovery key
+          </button>
+        )}
       </form>
     </div>
   );

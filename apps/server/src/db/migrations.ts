@@ -50,4 +50,19 @@ export const migrations: { id: string; sql: string }[] = [
       CREATE INDEX rate_limits_reset_idx ON rate_limits (reset_at);
     `,
   },
+  {
+    id: '002_recovery_key',
+    sql: `
+      -- Optional second wrap of the vault key under a client-held recovery key.
+      ALTER TABLE users
+        ADD COLUMN recovery_auth_hash         text,
+        ADD COLUMN recovery_wrapped_vault_key bytea CHECK (octet_length(recovery_wrapped_vault_key) = 48),
+        ADD COLUMN recovery_vault_key_iv      bytea CHECK (octet_length(recovery_vault_key_iv) = 12),
+        ADD COLUMN recovery_updated_at        timestamptz,
+        ADD CONSTRAINT users_recovery_all_or_none CHECK (
+          (recovery_auth_hash IS NULL) = (recovery_wrapped_vault_key IS NULL)
+          AND (recovery_auth_hash IS NULL) = (recovery_vault_key_iv IS NULL)
+        );
+    `,
+  },
 ];

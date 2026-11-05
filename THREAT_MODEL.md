@@ -25,6 +25,8 @@ Non-goals are listed in §7.
 | Key-Encryption Key (KEK) | Browser memory, non-extractable `CryptoKey` | Critical |
 | Vault Key (VK) | Browser memory, non-extractable `CryptoKey`; server stores it **wrapped** | Critical |
 | Auth Key (AK) | Sent to the server over TLS at login; server stores `Argon2id(AK)` | High (it lets you log in, but not decrypt) |
+| Recovery key (RK) | Wherever the user saved it (printout, password manager); briefly in browser memory | Critical: **equivalent to the master password** |
+| Recovery auth key (RAK) | Sent to the server during recovery; server stores `Argon2id(RAK)` | High (it starts a recovery, but cannot decrypt) |
 | Note plaintext | Browser memory only | Critical |
 | Note ciphertext, IVs, salts, KDF params, wrapped VK | Server DB | Low (public by design) |
 | Session token | `__Host-` HttpOnly cookie; DB stores SHA-256(token) | High |
@@ -69,6 +71,21 @@ server stores: Argon2id(AK; m=19 MiB, t=2, p=1, random salt)
   2. The client derives AK and KEK in a Web Worker.
   3. `login(email, AK)` checks AK against the stored Argon2id hash.
   4. On success the server rotates the session and returns the wrapped VK, which the client unwraps locally.
+- **Recovery key (optional).**
+  ```
+  RK   = 256 random bits (client CSPRNG), shown once as 11 groups of 5 Crockford-base32
+         characters, with a 16-bit checksum: SHA-256("zk-notes/v1/recovery-checksum" ‖ RK)[:2]
+  RK ──HKDF-SHA256(info="zk-notes/v1/recovery-auth-key")─────────────► RAK  → server stores Argon2id(RAK)
+  RK ──HKDF-SHA256(info="zk-notes/v1/recovery-key-encryption-key")──► RKEK (non-extractable, never sent)
+  recoveryWrappedVK = AES-256-GCM(RKEK, VK, aad = len‖"zk-notes/v1/vault-key-recovery"‖len‖userId)
+  ```
+  - RK already has full 256-bit entropy, so it needs no password-hardening KDF. HKDF is enough.
+  - **Setup** requires the current password: the client must re-unwrap the VK as extractable in order to wrap it a second time, and the server checks the current AK before storing anything. Generating a new key replaces the old wrap and hash, so the old key stops working.
+  - **Recovery:**
+    1. `recovery/verify(email, RAK)` returns the recovery-wrapped VK.
+    2. The client unwraps the VK with RKEK, picks a new salt and password, and wraps the VK under the new KEK.
+    3. `recovery/complete` re-checks RAK, atomically replaces the password credentials, revokes **every** session, and starts a new one.
+  - Notes are never re-encrypted, and the recovery key stays valid after it has been used.
 - **Page reload.** The session cookie survives a reload but the keys do not. The client fetches the vault bundle and asks for the password again. The VK is unwrapped locally; no server check is involved.
 
 ## 5. Threats and mitigations
@@ -119,7 +136,21 @@ server stores: Argon2id(AK; m=19 MiB, t=2, p=1, random salt)
 | One user reaching another's notes (IDOR) | Every query is scoped by `user_id` from the session, and the notes primary key is `(user_id, id)`. | `notes.test.ts` "fully isolated" |
 | SQL injection | Only parameterized queries are used. Every input is validated (UUIDs, strict base64, length bounds). | `notes.test.ts` path validation |
 
-### 5.4 Browser hardening
+### 5.4 Recovery key
+
+| Threat | Mitigation | Test |
+|---|---|---|
+| Server learns the recovery key | It only receives RAK and the recovery wrap. RAK and RKEK are independent HKDF outputs, and their labels differ from the password-derived keys'. | `recovery.test.ts` (crypto) "domain-separated" |
+| DB leak → offline attack via the recovery wrap or `Argon2id(RAK)` | RK has 256 bits of entropy, so brute force is infeasible. Adding a recovery key does **not** weaken the account: the password wrap is still the weakest offline check. | — |
+| Online guessing at `recovery/verify` or `recovery/complete` | 256-bit search space, plus **5 failed attempts per account per hour** (keyed by an HMAC of the email) and the per-IP auth limit. Failed recovery attempts do not lock normal login. | `recovery.test.ts` (server) rate limit |
+| Account enumeration through recovery | Unknown accounts, accounts without a recovery key, and wrong keys all give the same 401 after the same Argon2id work (a dummy verification). | `recovery.test.ts` (server) "indistinguishable" |
+| Someone with a hijacked session replaces or removes the recovery key (locking the user out, or planting their own) | Both actions require a valid session, a CSRF token **and** the current password's AK. | `recovery.test.ts` (server) "requires the current password" |
+| Recovery wrap used as a password wrap, or transplanted to another user | Distinct AAD label, and `userId` is in the AAD. | `recovery.test.ts` (crypto) "not interchangeable" |
+| Recovery key replaced partway through someone's recovery | `recovery/complete` updates the row only if the stored RAK hash is still the one that was verified; otherwise it returns 409. | Code review |
+| A typo locks the user out, or wastes rate-limit budget | The checksum catches typos on the client before anything is sent (about 1 in 65,536 slip through). Input tolerates case, spaces, dashes, and O/0 and I/L/1 confusion. | `recovery.test.ts` (crypto) |
+| **Stolen recovery key** | **Residual risk.** RK plus the email is a complete account takeover: the attacker can decrypt everything and set a new password. Mitigations: the UI shows the key only once and tells the user to store it offline; the user can replace or remove it at any time (doing so needs the password); recovery revokes every session, so the real user notices because they are signed out. | — |
+
+### 5.5 Browser hardening
 
 The CSP is: `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`, with `upgrade-insecure-requests` added in production.
 - There is no `unsafe-inline` or `unsafe-eval`. `wasm-unsafe-eval` is needed to compile the Argon2 WebAssembly module, and it does not allow JavaScript `eval`.
@@ -130,6 +161,7 @@ The CSP is: `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src
 
 Even with the encryption working as designed, the server can see:
 - email address, account creation time, KDF parameters
+- whether a recovery key is set up, when it was last changed, and when a recovery was used
 - number of notes, when each was created and updated, and how many times each was edited (version)
 - approximate note size, rounded up to 256 bytes
 - client IP addresses, request timing, and the sessions in use
@@ -155,8 +187,8 @@ The client detects rollback only within one session. A malicious server can show
 ### 7.5 Availability
 The server can delete or withhold data. Users who need durability guarantees should export their notes or keep backups.
 
-### 7.6 No account recovery
-By design there is no password reset. A forgotten password means the data is permanently lost. An optional recovery key (a second wrap of the VK under a high-entropy printed code) is a possible future addition.
+### 7.6 Account recovery depends on the user
+There is no server-side password reset, and there can't be one: the server cannot decrypt anything. Recovery works only through the optional recovery key (§4, §5.4). If the user forgets the password **and** has no recovery key, or has lost it, the data is permanently lost. The app shows a persistent banner until a recovery key exists. The recovery key is as powerful as the password, so storing it badly creates a second way to lose the account.
 
 ### 7.7 Memory hygiene
 JavaScript cannot guarantee that secrets are erased: strings are immutable and the garbage collector may copy them. The code wipes byte arrays where it can, keeps keys non-extractable, and never persists secrets, but memory forensics on an unlocked device is out of scope.
@@ -179,9 +211,9 @@ AES-256 and SHA-256 keep a comfortable margin against Grover-type attacks. No pu
 ## 9. Future hardening (not implemented)
 
 1. A second factor (WebAuthn) gating login, independent of the KDF.
-2. An optional recovery key.
-3. Email verification at registration, to close the enumeration gap.
-4. A signed vault manifest for detecting rollback and deletion (§7.4).
-5. Per-note keys wrapped by the VK, to support sharing.
-6. Delivery integrity for the client code (§7.1).
-7. Account deletion and data export endpoints.
+2. Email verification at registration, to close the enumeration gap.
+3. A signed vault manifest for detecting rollback and deletion (§7.4).
+4. Per-note keys wrapped by the VK, to support sharing.
+5. Delivery integrity for the client code (§7.1).
+6. Account deletion and data export endpoints.
+7. Email notification when a recovery key is used or changed, so a stolen recovery key gets noticed sooner.

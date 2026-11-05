@@ -66,6 +66,27 @@ export const changePasswordSchema = z.strictObject({
   newVaultKeyIv: iv,
 });
 
+export const recoverySetupSchema = z.strictObject({
+  currentAuthKey: authKey,
+  recoveryAuthKey: authKey,
+  recoveryWrappedVaultKey: wrappedVaultKey,
+  recoveryVaultKeyIv: iv,
+});
+
+export const recoveryRemoveSchema = z.strictObject({ currentAuthKey: authKey });
+
+export const recoveryVerifySchema = z.strictObject({ email: emailSchema, recoveryAuthKey: authKey });
+
+export const recoveryCompleteSchema = z.strictObject({
+  email: emailSchema,
+  recoveryAuthKey: authKey,
+  newKdfSalt: salt,
+  newKdfParams: kdfParamsSchema,
+  newAuthKey: authKey,
+  newWrappedVaultKey: wrappedVaultKey,
+  newVaultKeyIv: iv,
+});
+
 /** Padded plaintext (>= one block) + 16-byte GCM tag; upper bound mirrors the client. */
 const MAX_NOTE_CIPHERTEXT = Math.ceil((MAX_NOTE_PLAINTEXT + 4) / PAD_BLOCK) * PAD_BLOCK + 16;
 const noteCiphertext = b64({ min: PAD_BLOCK + 16, max: MAX_NOTE_CIPHERTEXT });

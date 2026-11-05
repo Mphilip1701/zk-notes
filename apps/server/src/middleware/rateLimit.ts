@@ -19,8 +19,10 @@ export interface RateLimitSettings {
   loginAccount: LimitRule;
   /** Registrations per IP. */
   register: LimitRule;
-  /** Password changes per user. */
+  /** Password changes and recovery-key changes per user. */
   changePassword: LimitRule;
+  /** Failed recovery attempts per account (success does not count). */
+  recoveryAccount: LimitRule;
 }
 
 const MIN = 60_000;
@@ -30,6 +32,7 @@ export const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   loginAccount: { windowMs: 15 * MIN, limit: 10 },
   register: { windowMs: 60 * MIN, limit: 5 },
   changePassword: { windowMs: 15 * MIN, limit: 5 },
+  recoveryAccount: { windowMs: 60 * MIN, limit: 5 },
 };
 
 export interface Limiters {
@@ -38,6 +41,7 @@ export interface Limiters {
   loginAccount: RequestHandler;
   register: RequestHandler;
   changePassword: RequestHandler;
+  recoveryAccount: RequestHandler;
 }
 
 const ipKey = (req: Request) => ipKeyGenerator(req.ip ?? 'unknown');
@@ -75,5 +79,6 @@ export function createLimiters(db: Db, config: Config, settings: RateLimitSettin
     loginAccount: make('loginAccount', accountKey, { skipSuccessfulRequests: true }),
     register: make('register', ipKey),
     changePassword: make('changePassword', (req) => req.auth?.userId ?? ipKey(req)),
+    recoveryAccount: make('recoveryAccount', accountKey, { skipSuccessfulRequests: true }),
   };
 }

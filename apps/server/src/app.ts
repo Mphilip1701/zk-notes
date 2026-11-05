@@ -8,6 +8,7 @@ import { DEFAULT_RATE_LIMITS, createLimiters, type RateLimitSettings } from './m
 import { extraHeaders, noStore, originCheck, requireJson, securityHeaders } from './middleware/security.js';
 import { authRouter } from './routes/auth.js';
 import { notesRouter } from './routes/notes.js';
+import { recoveryRouter } from './routes/recovery.js';
 import { AuthHasher } from './security/authHash.js';
 import { SessionStore } from './security/sessions.js';
 
@@ -43,6 +44,7 @@ export function createApp({ config, db, rateLimits }: AppDeps): Express {
     res.json({ ok: true });
   });
   app.use('/api/auth', authRouter({ db, config, sessions, hasher, limiters }));
+  app.use('/api/auth', recoveryRouter({ db, sessions, hasher, limiters }));
   app.use('/api/notes', requireAuth, requireCsrf(sessions), notesRouter(db));
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'not_found')));
 

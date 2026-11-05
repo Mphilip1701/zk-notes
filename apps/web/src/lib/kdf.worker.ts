@@ -4,7 +4,13 @@
  * The Master Key exists only inside this worker; only the auth key (to send)
  * and non-extractable CryptoKeys (structured-cloned) come back.
  */
-import { deriveLoginKeys, prepareRegistration, preparePasswordChange } from '@zk-notes/crypto';
+import {
+  deriveLoginKeys,
+  prepareRecoveryReset,
+  prepareRecoverySetup,
+  prepareRegistration,
+  preparePasswordChange,
+} from '@zk-notes/crypto';
 import type { WorkerRequest, WorkerResponse } from './kdfClient';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
@@ -22,6 +28,12 @@ ctx.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
         break;
       case 'changePassword':
         reply = { id: msg.id, ok: true, result: await preparePasswordChange(msg.args) };
+        break;
+      case 'recoverySetup':
+        reply = { id: msg.id, ok: true, result: await prepareRecoverySetup(msg.args) };
+        break;
+      case 'recoveryReset':
+        reply = { id: msg.id, ok: true, result: await prepareRecoveryReset(msg.args) };
         break;
     }
   } catch (e) {

@@ -4,3 +4,4 @@ export * from './aead.js';
 export * from './keys.js';
 export * from './notes.js';
 export * from './account.js';
+export * from './recovery.js';

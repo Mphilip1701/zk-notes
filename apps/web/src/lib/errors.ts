@@ -14,6 +14,8 @@ export function describeError(e: unknown): string {
         return 'This note was changed on another device. Reload to get the latest version.';
       case 'unauthenticated':
         return 'Your session expired. Please sign in again.';
+      case 'recovery_key_changed':
+        return 'The recovery key was changed while you were recovering. Try again with the current key.';
       case 'server_busy':
         return 'The server is busy. Please try again shortly.';
       default:

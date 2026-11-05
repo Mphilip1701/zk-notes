@@ -1,4 +1,11 @@
-import type { KdfParams, PasswordChangeRequest, RegistrationRequest } from '@zk-notes/crypto';
+import type {
+  KdfParams,
+  PasswordChangeRequest,
+  RecoveryResetRequest,
+  RecoverySetupRequest,
+  RecoveryWrapWire,
+  RegistrationRequest,
+} from '@zk-notes/crypto';
 
 /** Thin same-origin JSON client. Holds the CSRF token in memory only. */
 
@@ -38,6 +45,7 @@ export interface VaultBundle {
   kdfParams: KdfParams;
   wrappedVaultKey: string;
   vaultKeyIv: string;
+  hasRecoveryKey: boolean;
 }
 
 export interface NoteWire {
@@ -62,6 +70,13 @@ export const api = {
     }
   },
   changePassword: (req: PasswordChangeRequest) => call('POST', '/api/auth/change-password', req),
+  setRecoveryKey: (req: RecoverySetupRequest) => call<{ hasRecoveryKey: boolean }>('POST', '/api/auth/recovery-key', req),
+  removeRecoveryKey: (currentAuthKey: string) =>
+    call<{ hasRecoveryKey: boolean }>('POST', '/api/auth/recovery-key/remove', { currentAuthKey }),
+  recoveryVerify: (email: string, recoveryAuthKey: string) =>
+    call<RecoveryWrapWire & { userId: string }>('POST', '/api/auth/recovery/verify', { email, recoveryAuthKey }),
+  recoveryComplete: (email: string, req: RecoveryResetRequest) =>
+    call<VaultBundle>('POST', '/api/auth/recovery/complete', { email, ...req }),
   listNotes: () => call<{ notes: NoteWire[] }>('GET', '/api/notes'),
   createNote: (id: string, enc: { iv: string; ciphertext: string }) =>
     call<NoteWire>('POST', '/api/notes', { id, ...enc }),

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { api, type VaultBundle } from '../lib/api';
 import { describeError } from '../lib/errors';
 import { kdf } from '../lib/kdfClient';
-import { MIN_PASSWORD_LENGTH } from './AuthScreen';
+import { MIN_PASSWORD_LENGTH } from '../lib/policy';
 
 export function ChangePasswordDialog(props: {
   bundle: VaultBundle;

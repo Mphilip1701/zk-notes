@@ -4,6 +4,7 @@ import { ApiError, api, type NoteWire, type VaultBundle } from '../lib/api';
 import { describeError } from '../lib/errors';
 import { useIdle } from '../lib/useIdle';
 import { ChangePasswordDialog } from './ChangePasswordDialog';
+import { RecoveryKeyDialog } from './RecoveryKeyDialog';
 
 const AUTO_LOCK_MS = 15 * 60_000;
 
@@ -37,6 +38,7 @@ export function NotesScreen({ bundle, vaultKey, onLock, onLogout, onSessionLost,
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showChangePw, setShowChangePw] = useState(false);
+  const [showRecovery, setShowRecovery] = useState(false);
   /** Highest version seen per note this session: detects server-side rollback. */
   const seenVersions = useRef(new Map<string, number>());
 
@@ -180,12 +182,24 @@ export function NotesScreen({ bundle, vaultKey, onLock, onLogout, onSessionLost,
       <header className="topbar">
         <strong>🔐 ZK Notes</strong>
         <span className="muted small grow">{bundle.email}</span>
+        <button onClick={() => setShowRecovery(true)}>Recovery key</button>
         <button onClick={() => setShowChangePw(true)}>Change password</button>
         <button onClick={onLock} title="Remove keys from memory">
           Lock
         </button>
         <button onClick={onLogout}>Sign out</button>
       </header>
+
+      {!bundle.hasRecoveryKey && (
+        <div className="banner warning" role="status">
+          <span className="grow">
+            <strong>No recovery key.</strong> If you forget your master password, your notes will be lost for good.
+          </span>
+          <button className="primary" onClick={() => setShowRecovery(true)}>
+            Create recovery key
+          </button>
+        </div>
+      )}
 
       <aside className="sidebar">
         <div className="row">
@@ -269,6 +283,9 @@ export function NotesScreen({ bundle, vaultKey, onLock, onLogout, onSessionLost,
         )}
       </main>
 
+      {showRecovery && (
+        <RecoveryKeyDialog bundle={bundle} onClose={() => setShowRecovery(false)} onChanged={onBundleChanged} />
+      )}
       {showChangePw && (
         <ChangePasswordDialog bundle={bundle} onClose={() => setShowChangePw(false)} onChanged={onBundleChanged} />
       )}

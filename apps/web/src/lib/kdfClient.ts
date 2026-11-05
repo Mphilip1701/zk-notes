@@ -1,12 +1,23 @@
-import type { PasswordChangeRequest, RegistrationRequest } from '@zk-notes/crypto';
-import type { preparePasswordChange } from '@zk-notes/crypto';
+import type {
+  PasswordChangeRequest,
+  RecoveryResetRequest,
+  RecoverySetupRequest,
+  RegistrationRequest,
+  prepareRecoveryReset,
+  prepareRecoverySetup,
+  preparePasswordChange,
+} from '@zk-notes/crypto';
 
 type ChangeArgs = Parameters<typeof preparePasswordChange>[0];
+type RecoverySetupArgs = Parameters<typeof prepareRecoverySetup>[0];
+type RecoveryResetArgs = Parameters<typeof prepareRecoveryReset>[0];
 
 export type WorkerRequest =
   | { id: number; op: 'derive'; password: string; kdfSalt: string; kdfParams: unknown }
   | { id: number; op: 'register'; email: string; password: string }
-  | { id: number; op: 'changePassword'; args: ChangeArgs };
+  | { id: number; op: 'changePassword'; args: ChangeArgs }
+  | { id: number; op: 'recoverySetup'; args: RecoverySetupArgs }
+  | { id: number; op: 'recoveryReset'; args: RecoveryResetArgs };
 
 export type WorkerResponse = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 
@@ -49,4 +60,9 @@ export const kdf = {
   register: (email: string, password: string) =>
     run<{ request: RegistrationRequest; vaultKey: CryptoKey }>({ op: 'register', email, password }),
   changePassword: (args: ChangeArgs) => run<PasswordChangeRequest>({ op: 'changePassword', args }),
+  recoverySetup: (args: RecoverySetupArgs) =>
+    run<{ request: RecoverySetupRequest; recoveryKey: string }>({ op: 'recoverySetup', args }),
+  /** The recovery KEK is a non-extractable CryptoKey; structured clone carries it into the worker. */
+  recoveryReset: (args: RecoveryResetArgs) =>
+    run<{ request: RecoveryResetRequest; vaultKey: CryptoKey }>({ op: 'recoveryReset', args }),
 };

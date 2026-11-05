@@ -10,7 +10,7 @@ import type { AuthHasher } from '../security/authHash.js';
 import type { SessionStore } from '../security/sessions.js';
 import { changePasswordSchema, loginSchema, preloginSchema, registerSchema } from '../validation.js';
 
-interface UserRow {
+export interface UserRow {
   id: string;
   email: string;
   kdf_salt: Buffer;
@@ -18,10 +18,11 @@ interface UserRow {
   auth_hash: string;
   wrapped_vault_key: Buffer;
   vault_key_iv: Buffer;
+  has_recovery: boolean;
 }
 
 /** Everything the client needs to (re)unlock its vault. None of it is secret. */
-function vaultBundle(u: UserRow) {
+export function vaultBundle(u: UserRow) {
   return {
     userId: u.id,
     email: u.email,
@@ -29,10 +30,12 @@ function vaultBundle(u: UserRow) {
     kdfParams: u.kdf_params,
     wrappedVaultKey: u.wrapped_vault_key.toString('base64'),
     vaultKeyIv: u.vault_key_iv.toString('base64'),
+    hasRecoveryKey: u.has_recovery,
   };
 }
 
-const USER_COLUMNS = 'id, email, kdf_salt, kdf_params, auth_hash, wrapped_vault_key, vault_key_iv';
+export const USER_COLUMNS =
+  'id, email, kdf_salt, kdf_params, auth_hash, wrapped_vault_key, vault_key_iv, recovery_auth_hash IS NOT NULL AS has_recovery';
 
 export function authRouter(deps: {
   db: Db;

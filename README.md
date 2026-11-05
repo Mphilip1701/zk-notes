@@ -23,6 +23,9 @@ password ─Argon2id(64 MiB, t=3)─► MK ─HKDF("auth-key")─► AK ──�
 - Every ciphertext is bound by AAD to `userId`, `noteId` and `version`, so the server can't swap notes between users or
   notes, or relabel an old ciphertext as a newer version.
 - Changing your password re-wraps the VK. Notes are not re-encrypted.
+- **Optional recovery key:** a random 256-bit key, shown once as `XXXXX-XXXXX-…`. It wraps the same VK a second time,
+  so a forgotten password can be replaced with a new one without the server ever being able to decrypt anything.
+  Anyone holding it can read your notes, so store it offline.
 
 ## Layout
 
@@ -82,17 +85,19 @@ npm test
 ```
 
 This runs:
-- **`packages/crypto`:** 67 unit tests, no database needed. They cover:
+- **`packages/crypto`:** 83 unit tests, no database needed. They cover:
   - Argon2id reference vector, HKDF RFC 5869 vectors, AES-GCM known-answer vectors
   - tamper, wrong-key and AAD-mismatch detection, IV uniqueness
   - domain separation (AK cannot unwrap VK), non-extractability, KDF downgrade refusal
   - padding, and the full register / login / password-change flows
-- **`apps/server`:** 49 integration tests against real Postgres (`TEST_DATABASE_URL`, default
+  - recovery key encoding, checksum and typo tolerance, domain separation, and the forgot-password flow
+- **`apps/server`:** 59 integration tests against real Postgres (`TEST_DATABASE_URL`, default
   `postgres://zknotes:zknotes@localhost:5432/zknotes_test`). They cover:
   - cookie flags, session fixation, idle and absolute expiry, logout revocation
   - CSRF and Origin checks, enumeration resistance
   - per-account and per-IP rate limits (shared across instances)
   - note isolation between users, optimistic concurrency
+  - recovery: password required to set it, indistinguishable failures, session revocation, rate limits
   - an end-to-end check with the real crypto library that the database holds only ciphertext
 
 ## API
@@ -105,9 +110,13 @@ header. Authenticated state-changing requests also need `X-CSRF-Token`.
 | POST | `/auth/prelogin` | – | `{email}` → `{kdfSalt, kdfParams}` (a decoy for unknown emails) |
 | POST | `/auth/register` | – | `{userId, email, kdfSalt, kdfParams, authKey, wrappedVaultKey, vaultKeyIv}` → `{userId, email, csrfToken}` |
 | POST | `/auth/login` | – | `{email, authKey}` → vault bundle + `csrfToken` |
-| GET | `/auth/session` | cookie | → vault bundle + `csrfToken` (used to re-unlock after a reload) |
+| GET | `/auth/session` | cookie | → vault bundle (including `hasRecoveryKey`) + `csrfToken` (used to re-unlock after a reload) |
 | POST | `/auth/logout` | cookie + CSRF | → 204 |
 | POST | `/auth/change-password` | cookie + CSRF | `{currentAuthKey, newKdfSalt, newKdfParams, newAuthKey, newWrappedVaultKey, newVaultKeyIv}` → `{csrfToken}` |
+| POST | `/auth/recovery-key` | cookie + CSRF | `{currentAuthKey, recoveryAuthKey, recoveryWrappedVaultKey, recoveryVaultKeyIv}` → creates or replaces the recovery key |
+| POST | `/auth/recovery-key/remove` | cookie + CSRF | `{currentAuthKey}` → removes the recovery key |
+| POST | `/auth/recovery/verify` | – | `{email, recoveryAuthKey}` → `{userId, recoveryWrappedVaultKey, recoveryVaultKeyIv}` |
+| POST | `/auth/recovery/complete` | – | `{email, recoveryAuthKey, newKdfSalt, newKdfParams, newAuthKey, newWrappedVaultKey, newVaultKeyIv}` → vault bundle + `csrfToken`; revokes all sessions |
 | GET | `/notes` | cookie | → `{notes: [{id, ciphertext, iv, version, createdAt, updatedAt}]}` |
 | POST | `/notes` | cookie + CSRF | `{id, ciphertext, iv}` → note (version 1) |
 | PUT | `/notes/:id` | cookie + CSRF | `{ciphertext, iv, version}` → note. `version` must equal current + 1, otherwise 409 |
